@@ -23,7 +23,6 @@ declare function mom:cell-sig ($mom as map:map) {
     fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')),
         ' (', fn:string (fn:count (map:get ($mom, '_kids'))), '/', fn:string (map:get ($mom, '_start')), '+', fn:string (map:get ($mom, '_height')), ')]' ), '')
 };
-
 declare function mom:result-to-mom ($config, $result) {
     (: init the root :)
     let $mom := mom:new-cell ('_root')
@@ -66,7 +65,7 @@ declare function mom:result-to-mom_ ($mom, $columns, $values, $group) {
 declare function mom:check-for-matching-kid ($mom, $column, $content) as xs:boolean {
     let $latest := mom:latest-kid ($mom)
     let $latest-string := fn:string-join ((map:get ($latest, '_column'), fn:string(map:get ($latest, '_content'))), '=')
-    let $new-string := fn:string-join (($column, $content), '=')
+    let $new-string := fn:string-join (($column, fn:string ($content)), '=')
     let $trace := xdmp:trace('mom:rtm', 'checking '||$new-string||' vs latest '||$latest-string)
     return $latest-string = $new-string
 };
@@ -100,6 +99,13 @@ declare function mom:new-cell ($column, $content, $kids) {
 
 (: ======= mom to table stuff ======= :)
 
+declare function mom:result-to-table ($config, $result) {
+    let $trace := xdmp:trace('mom:table', 'working on table')
+    let $mom := mom:result-to-mom ($config, $result)
+    let $trace := xdmp:trace('mom:table', 'got mom '||mom:cell-sig ($mom))
+    return mom:table ($mom)
+};
+
 (: recurse, assign heights and start rows :)
 declare function mom:assign-heights ($root as map:map) {
     let $height :=
@@ -125,6 +131,7 @@ declare function mom:assign-starts ($root as map:map) {
 
 (: here is where you get your table :)
 declare function mom:table ($mom as map:map) {
+    let $trace := xdmp:trace('mom:table', 'working on table for mom '||mom:cell-sig ($mom))
     let $config := map:get ($mom, '_config')
     let $caption := map:get ($config, 'caption')
     let $columns := map:get ($config, 'columns')
@@ -170,3 +177,4 @@ declare function mom:process-row-cells ($config, $root, $row-num) {
     )
 };
 
+(: ============= transform mom =============== :)
