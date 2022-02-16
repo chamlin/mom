@@ -5,9 +5,7 @@ module namespace mom = 'http://marklogic.com/support/map-of-maps';
 (: ======= sql:result to mom stuff ======= :)
 
 
-declare function mom:dump-mom ($mom) {
-    mom:dump-mom ('', $mom)
-};
+declare function mom:dump-mom ($mom) { mom:dump-mom ('', $mom) };
 
 declare function mom:dump-mom ($indent, $mom) {
     let $attr :=
@@ -22,23 +20,19 @@ declare function mom:dump-mom ($indent, $mom) {
 };
 
 declare function mom:cell-sig ($mom as map:map) {
-    mom:cell-sig ($mom, fn:true())
-};
-
-declare function mom:cell-sig ($mom as map:map, $kid-count as xs:boolean) {
-    fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', if ($kid-count) then fn:string (fn:count (map:get ($mom, '_kids'))) else (), ')]' ), '')
-    (: fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', fn:string (map:count (map:get ($mom, '_kids'))), ')]' ), '') :)
+    fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', fn:string (fn:count (map:get ($mom, '_kids'))), ')]' ), '')
 };
 
 declare function mom:result-to-mom ($config, $result) {
     (: init the root :)
     let $mom := mom:new-cell ('_root')
     let $_setup := map:put ($mom, '_config', $config)
+    let $_setup := map:put ($mom, '_start', 1)
     let $columns := map:get ($config, 'columns')
     let $group := map:get ($config, 'group')
 
     let $_load := 
-        (: should be straight across additions :)
+        (: for each row, start at the root map and add the cols/vals :)
         for $row in $result
         let $trace := xdmp:trace('mom:rtm', 'adding row '||xdmp:describe ($row, (), ()))
         let $values := for $column in $columns return (map:get ($row, $column))
@@ -46,24 +40,23 @@ declare function mom:result-to-mom ($config, $result) {
     return $mom
 };
 
-(: order by each column? :)
 declare function mom:result-to-mom_ ($mom, $columns, $values, $group) {
-    (: latest row, or column value, or create a new one, if none :)
-    if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: add :)
-    let $trace := xdmp:trace('mom:rtm', 'adding '||$columns[1]||' = '||$values[1]||'.')
-    let $matches-current := mom:check-for-matching-kid ($mom, $columns[1], $values[1])
-    let $trace := xdmp:trace('mom:rtm', 'matching kid? '||mom:check-for-matching-kid ($mom, $columns[1], $values[1]))
+    if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: end of recursion :)
+    let $column := $columns[1]
+    let $value := $values[1]
+    let $trace := xdmp:trace('mom:rtm', 'adding '||$column||' = '||$value||'.')
+    let $matches-current := mom:check-for-matching-kid ($mom, $column, $value)
     return
         if ($matches-current and $group) then
-            (: recurse into latest-kid, don't create a new one :)
+            (: implicit grouping; recurse into latest-kid, don't create a new one :)
             let $latest-kid := mom:latest-kid ($mom)
-            let $trace := xdmp:trace('mom:rtm', 'moving to matched cell.')
+            let $trace := xdmp:trace('mom:rtm', 'moving to matched cell '||mom:cell-sig ($latest-kid))
             return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2), $group)
         else
-            let $new-kid := mom:add-kid ($mom, $columns[1], $values[1])
+            (: create a new kid and add to the list :)
+            let $new-kid := mom:add-kid ($mom, $column, $value)
             let $latest-kid := mom:latest-kid ($mom)
-            let $trace := xdmp:trace('mom:rtm', 'adding cell '||mom:cell-sig ($new-kid)||' to '||mom:cell-sig ($mom))
-            let $trace := xdmp:trace('mom:rtm', 'next to consider '||mom:cell-sig ($latest-kid))
+            let $trace := xdmp:trace('mom:rtm', 'adding cell '||mom:cell-sig ($new-kid)||' to '||mom:cell-sig ($mom)||', moving to '||mom:cell-sig ($latest-kid))
             return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2), $group)
 };
 
@@ -102,8 +95,28 @@ declare function mom:new-cell ($column, $content, $kids) {
 };
 
 
-
-
 (: ======= mom to table stuff ======= :)
 
+(: recurse, assign heights and start rows :)
+declare function mom:assign-heights ($root as map:map) {
+    let $height :=
+        if (map:count (map:get ($root, '_kids')) > 0) then
+            fn:sum (for $kid in map:get ($root, '_kids') return mom:assign-heights ($kid))
+        else 1
+    let $_store := map:put ($root, '_height', $height) 
+    return $height
+};
+
+(: recurse, assign heights and start rows :)
+declare function mom:assign-starts ($root as map:map) {
+    let $my-start := map:get ($root, '_start')
+    let $offset := $my-start
+    return
+        for $kid in map:get ($root, '_kids')
+        return (
+            map:put ($kid, '_start', $offset),
+            xdmp:set ($offset, $offset + map:get ($kid, '_height')),
+            mom:assign-starts ($kid)
+        )
+};
 
