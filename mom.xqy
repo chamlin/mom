@@ -22,7 +22,11 @@ declare function mom:dump-mom ($indent, $mom) {
 };
 
 declare function mom:cell-sig ($mom as map:map) {
-    fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', fn:string (fn:count (map:get ($mom, '_kids'))), ')]' ), '')
+    mom:cell-sig ($mom, fn:true())
+};
+
+declare function mom:cell-sig ($mom as map:map, $kid-count as xs:boolean) {
+    fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', if ($kid-count) then fn:string (fn:count (map:get ($mom, '_kids'))) else (), ')]' ), '')
     (: fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', fn:string (map:count (map:get ($mom, '_kids'))), ')]' ), '') :)
 };
 
@@ -43,11 +47,20 @@ declare function mom:result-to-mom_ ($mom, $columns, $values) {
     (: latest row, or column value, or create a new one, if none :)
     if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: add :)
     let $trace := xdmp:trace('mom:rtm', 'adding '||$columns[1]||' = '||$values[1]||'.')
+    let $trace := xdmp:trace('mom:rtm', 'matching kid? '||mom:check-for-matching-kid ($mom, $columns[1], $values[1]))
     let $new-kid := mom:add-kid ($mom, $columns[1], $values[1])
     let $latest-kid := mom:latest-kid ($mom)
     let $trace := xdmp:trace('mom:rtm', 'adding cell '||mom:cell-sig ($new-kid)||' to '||mom:cell-sig ($mom))
     let $trace := xdmp:trace('mom:rtm', 'next to consider '||mom:cell-sig ($latest-kid))
     return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2))
+};
+
+declare function mom:check-for-matching-kid ($mom, $column, $content) as xs:boolean {
+    let $latest := mom:latest-kid ($mom)
+    let $latest-string := fn:string-join ((map:get ($latest, '_column'), fn:string(map:get ($latest, '_content'))), '=')
+    let $new-string := fn:string-join (($column, $content), '=')
+    let $trace := xdmp:trace('mom:rtm', 'checking '||$new-string||' vs latest '||$latest-string)
+    return $latest-string = $new-string
 };
 
 declare function mom:latest-kid ($mom) {
