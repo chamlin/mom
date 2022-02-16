@@ -12,7 +12,7 @@ declare function mom:dump-mom ($mom) {
 declare function mom:dump-mom ($indent, $mom) {
     let $attr :=
         for $key in map:keys ($mom) 
-        where fn:not ($key = ('_column', '_content', '_kids'))
+        where fn:not ($key = ('_column', '_content', '_kids', '_config'))
         return fn:concat ('(', $key, '=',  fn:string (map:get ($mom, $key)), ')')
     return 
         ('map-of-maps: '||$indent||map:get ($mom, '_column') ||' = '||map:get ($mom, '_content') || ' | ' || fn:string-join ($attr, ' '))
@@ -30,51 +30,41 @@ declare function mom:cell-sig ($mom as map:map, $kid-count as xs:boolean) {
     (: fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', fn:string (map:count (map:get ($mom, '_kids'))), ')]' ), '') :)
 };
 
-declare function mom:result-to-mom ($columns, $result) {
+declare function mom:result-to-mom ($config, $result) {
     (: init the root :)
     let $mom := mom:new-cell ('_root')
+    let $_setup := map:put ($mom, '_config', $config)
+    let $columns := map:get ($config, 'columns')
+    let $group := map:get ($config, 'group')
+
     let $_load := 
         (: should be straight across additions :)
         for $row in $result
         let $trace := xdmp:trace('mom:rtm', 'adding row '||xdmp:describe ($row, (), ()))
         let $values := for $column in $columns return (map:get ($row, $column))
-        return mom:result-to-mom-merge_ ($mom, $columns, $values)
+        return mom:result-to-mom_ ($mom, $columns, $values, $group)
     return $mom
 };
 
 (: order by each column? :)
-declare function mom:result-to-mom-merge_ ($mom, $columns, $values) {
+declare function mom:result-to-mom_ ($mom, $columns, $values, $group) {
     (: latest row, or column value, or create a new one, if none :)
     if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: add :)
     let $trace := xdmp:trace('mom:rtm', 'adding '||$columns[1]||' = '||$values[1]||'.')
     let $matches-current := mom:check-for-matching-kid ($mom, $columns[1], $values[1])
     let $trace := xdmp:trace('mom:rtm', 'matching kid? '||mom:check-for-matching-kid ($mom, $columns[1], $values[1]))
     return
-        if ($matches-current) then
+        if ($matches-current and $group) then
             (: recurse into latest-kid, don't create a new one :)
             let $latest-kid := mom:latest-kid ($mom)
             let $trace := xdmp:trace('mom:rtm', 'moving to matched cell.')
-            return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2))
+            return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2), $group)
         else
             let $new-kid := mom:add-kid ($mom, $columns[1], $values[1])
             let $latest-kid := mom:latest-kid ($mom)
             let $trace := xdmp:trace('mom:rtm', 'adding cell '||mom:cell-sig ($new-kid)||' to '||mom:cell-sig ($mom))
             let $trace := xdmp:trace('mom:rtm', 'next to consider '||mom:cell-sig ($latest-kid))
-            return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2))
-};
-
-(: order by each column? :)
-declare function mom:result-to-mom_ ($mom, $columns, $values) {
-    (: latest row, or column value, or create a new one, if none :)
-    if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: add :)
-    let $trace := xdmp:trace('mom:rtm', 'adding '||$columns[1]||' = '||$values[1]||'.')
-    let $matches-current := mom:check-for-matching-kid ($mom, $columns[1], $values[1])
-    let $trace := xdmp:trace('mom:rtm', 'matching kid? '||mom:check-for-matching-kid ($mom, $columns[1], $values[1]))
-    let $new-kid := mom:add-kid ($mom, $columns[1], $values[1])
-    let $latest-kid := mom:latest-kid ($mom)
-    let $trace := xdmp:trace('mom:rtm', 'adding cell '||mom:cell-sig ($new-kid)||' to '||mom:cell-sig ($mom))
-    let $trace := xdmp:trace('mom:rtm', 'next to consider '||mom:cell-sig ($latest-kid))
-    return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2))
+            return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2), $group)
 };
 
 declare function mom:check-for-matching-kid ($mom, $column, $content) as xs:boolean {
