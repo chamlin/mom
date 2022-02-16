@@ -20,7 +20,8 @@ declare function mom:dump-mom ($indent, $mom) {
 };
 
 declare function mom:cell-sig ($mom as map:map) {
-    fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')), ' (', fn:string (fn:count (map:get ($mom, '_kids'))), ')]' ), '')
+    fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')),
+        ' (', fn:string (fn:count (map:get ($mom, '_kids'))), '/', fn:string (map:get ($mom, '_start')), '+', fn:string (map:get ($mom, '_height')), ')]' ), '')
 };
 
 declare function mom:result-to-mom ($config, $result) {
@@ -29,7 +30,7 @@ declare function mom:result-to-mom ($config, $result) {
     let $_setup := map:put ($mom, '_config', $config)
     let $_setup := map:put ($mom, '_start', 1)
     let $columns := map:get ($config, 'columns')
-    let $group := map:get ($config, 'group')
+    let $group := (map:get ($config, 'group'), fn:true())[1]
 
     let $_load := 
         (: for each row, start at the root map and add the cols/vals :)
@@ -37,6 +38,8 @@ declare function mom:result-to-mom ($config, $result) {
         let $trace := xdmp:trace('mom:rtm', 'adding row '||xdmp:describe ($row, (), ()))
         let $values := for $column in $columns return (map:get ($row, $column))
         return mom:result-to-mom_ ($mom, $columns, $values, $group)
+    let $_ready_calculations := mom:assign-heights ($mom)
+    let $_ready_calculations := mom:assign-starts ($mom)
     return $mom
 };
 
@@ -118,5 +121,52 @@ declare function mom:assign-starts ($root as map:map) {
             xdmp:set ($offset, $offset + map:get ($kid, '_height')),
             mom:assign-starts ($kid)
         )
+};
+
+(: here is where you get your table :)
+declare function mom:table ($mom as map:map) {
+    let $config := map:get ($mom, '_config')
+    let $caption := map:get ($config, 'caption')
+    let $columns := map:get ($config, 'columns')
+    return 
+    <table border="1">{
+        if ($caption) then <caption>{$caption}</caption> else (),
+        <tr>{$columns ! <th>{.}</th>}</tr>,
+        for $row in map:get ($mom, '_kids')
+        return mom:table-row ($config, $row)
+        }
+    </table>
+};
+
+(: top level row call; you have to call once for each table row covered, and output any cells that start in that row :)
+declare function mom:table-row ($config, $root) {
+    let $start := map:get ($root, '_start') 
+    let $height := map:get ($root, '_height') 
+    for $row-num in $start to $start + $height - 1
+    let $trace := xdmp:trace('mom:table', 'running row-num '||$row-num)
+    return <tr>{mom:process-row-cells ($config, $root, $row-num)}</tr>
+};
+
+declare function mom:process-row-cells ($config, $root, $row-num) {
+    let $start-row := map:get ($root, '_start') 
+    let $height := map:get ($root, '_height') 
+    let $last-row := $start-row + $height
+    return (
+        (: is this cell (and) the rest of this row out of scope for this row-num? :)
+        if ($row-num < $start-row or $row-num > $start-row + $height - 1) then (
+            xdmp:trace('mom:table', 'for row-num '||$row-num||' skipping '||mom:cell-sig ($root))
+        ) else (
+            xdmp:trace('mom:table', 'for row-num '||$row-num||' checking '||mom:cell-sig ($root)),
+            if ($row-num eq $start-row) then (
+                <td>{
+                    attribute { 'rownumbuh' } { $row-num },
+                    if ($height > 1) then attribute { 'rowspan' } { $height } else (),
+                    map:get ($root, '_content')
+                }</td>
+            ) else ()
+            ,
+            (map:get ($root, '_kids') ! mom:process-row-cells ($config, ., $row-num))
+        )
+    )
 };
 
