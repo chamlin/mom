@@ -38,8 +38,29 @@ declare function mom:result-to-mom ($columns, $result) {
         for $row in $result
         let $trace := xdmp:trace('mom:rtm', 'adding row '||xdmp:describe ($row, (), ()))
         let $values := for $column in $columns return (map:get ($row, $column))
-        return mom:result-to-mom_ ($mom, $columns, $values)
+        return mom:result-to-mom-merge_ ($mom, $columns, $values)
     return $mom
+};
+
+(: order by each column? :)
+declare function mom:result-to-mom-merge_ ($mom, $columns, $values) {
+    (: latest row, or column value, or create a new one, if none :)
+    if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: add :)
+    let $trace := xdmp:trace('mom:rtm', 'adding '||$columns[1]||' = '||$values[1]||'.')
+    let $matches-current := mom:check-for-matching-kid ($mom, $columns[1], $values[1])
+    let $trace := xdmp:trace('mom:rtm', 'matching kid? '||mom:check-for-matching-kid ($mom, $columns[1], $values[1]))
+    return
+        if ($matches-current) then
+            (: recurse into latest-kid, don't create a new one :)
+            let $latest-kid := mom:latest-kid ($mom)
+            let $trace := xdmp:trace('mom:rtm', 'moving to matched cell.')
+            return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2))
+        else
+            let $new-kid := mom:add-kid ($mom, $columns[1], $values[1])
+            let $latest-kid := mom:latest-kid ($mom)
+            let $trace := xdmp:trace('mom:rtm', 'adding cell '||mom:cell-sig ($new-kid)||' to '||mom:cell-sig ($mom))
+            let $trace := xdmp:trace('mom:rtm', 'next to consider '||mom:cell-sig ($latest-kid))
+            return mom:result-to-mom_ ($latest-kid, fn:subsequence ($columns, 2), fn:subsequence ($values, 2))
 };
 
 (: order by each column? :)
@@ -47,6 +68,7 @@ declare function mom:result-to-mom_ ($mom, $columns, $values) {
     (: latest row, or column value, or create a new one, if none :)
     if (fn:count ($values) = 0 or fn:count ($columns) = 0) then () else (: add :)
     let $trace := xdmp:trace('mom:rtm', 'adding '||$columns[1]||' = '||$values[1]||'.')
+    let $matches-current := mom:check-for-matching-kid ($mom, $columns[1], $values[1])
     let $trace := xdmp:trace('mom:rtm', 'matching kid? '||mom:check-for-matching-kid ($mom, $columns[1], $values[1]))
     let $new-kid := mom:add-kid ($mom, $columns[1], $values[1])
     let $latest-kid := mom:latest-kid ($mom)
