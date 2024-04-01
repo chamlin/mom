@@ -11,6 +11,8 @@ Next:  add transform hooks.
 internal attributes will start with \_. For example, \_height and \_start.  \_kids is children array. \_root attribute notes root of mom
 \_content
 
+Example:
+
 ```
 import module namespace mom = 'http://marklogic.com/support/map-of-maps' at '/lib/mom.xqy';
 let $columns := ('dbName','mergePriority','mergeMaxSize','mergeMinSize','mergeMinRatio','mergeTimestamp','retainUntilBackup')
@@ -73,3 +75,39 @@ let $mom := mom:result-to-mom ($config, $results)
 let $table := mom:table ($mom)
 return $table
 ```
+
+returns
+
+```
+<table border="1">
+    <caption>Merge parameters for databases in collection</caption>
+    <tr>
+        <th>dbName</th>
+        <th>mergePriority</th>
+        <th>mergeMaxSize</th>
+        <th>mergeMinSize</th>
+        <th>mergeMinRatio</th>
+        <th>mergeTimestamp</th>
+        <th>retainUntilBackup</th>
+    </tr>
+    <tr>
+        <td rownum="1">DB-A</td>
+        <td rownum="1">lower</td>
+        <td rownum="1">32768</td>
+        <td rownum="1">1024</td>
+        <td rownum="1">1</td>
+        <td rownum="1">0</td>
+        <td rownum="1">false</td>
+    </tr>
+    <tr>
+        <td rownum="2">DB-B</td>
+        <td rownum="2">normal</td>
+        <td rownum="2">32768</td>
+        <td rownum="2">1024</td>
+        <td rownum="2">2</td>
+        <td rownum="2">0</td>
+        <td rownum="2">false</td>
+    </tr>
+</table>
+```
+
