@@ -19,10 +19,12 @@ declare function mom:dump-mom ($indent, $mom) {
     return mom:dump-mom ($indent||'    ', $kid)
 };
 
+(: string dump of a cell :)
 declare function mom:cell-sig ($mom as map:map) {
     fn:string-join (( '[', map:get ($mom, '_column'), '=', fn:string(map:get ($mom, '_content')),
         ' (', fn:string (fn:count (map:get ($mom, '_kids'))), '/', fn:string (map:get ($mom, '_start')), '+', fn:string (map:get ($mom, '_height')), ')]' ), '')
 };
+
 declare function mom:result-to-mom ($config, $result) {
     (: init the root :)
     let $mom := mom:new-cell ('_root')
@@ -37,6 +39,7 @@ declare function mom:result-to-mom ($config, $result) {
         let $trace := xdmp:trace('mom:rtm', 'adding row '||xdmp:describe ($row, (), ()))
         let $values := for $column in $columns return (map:get ($row, $column))
         return mom:result-to-mom_ ($mom, $columns, $values, $group)
+    let $_ready_calculations := mom:transform ($config, $mom)
     let $_ready_calculations := mom:assign-heights ($mom)
     let $_ready_calculations := mom:assign-starts ($mom)
     return $mom
@@ -72,6 +75,10 @@ declare function mom:check-for-matching-kid ($mom, $column, $content) as xs:bool
 
 declare function mom:latest-kid ($mom) {
     map:get ($mom, '_kids')[last()]
+};
+
+declare function mom:kids ($mom) {
+    map:get ($mom, '_kids')
 };
 
 declare function mom:add-kid ($mom, $column, $content) {
@@ -166,7 +173,7 @@ declare function mom:process-row-cells ($config, $root, $row-num) {
             xdmp:trace('mom:table', 'for row-num '||$row-num||' checking '||mom:cell-sig ($root)),
             if ($row-num eq $start-row) then (
                 <td>{
-                    attribute { 'rownumbuh' } { $row-num },
+                    attribute { 'rownum' } { $row-num },
                     if ($height > 1) then attribute { 'rowspan' } { $height } else (),
                     map:get ($root, '_content')
                 }</td>
@@ -178,3 +185,21 @@ declare function mom:process-row-cells ($config, $root, $row-num) {
 };
 
 (: ============= transform mom =============== :)
+
+(: transform should take ($config, $mom) 
+
+   transform happens before cell calculations, so changes to structure are fine
+ :)
+
+declare function mom:transform ($config as map:map, $mom as map:map) {
+    let $before := map:get ($config, 'before')
+    let $after := map:get ($config, 'after')
+    let $_before := xdmp:apply (map:get ($config, 'before'), $config, $mom)
+    let $_under := 
+        for $kid in mom:kids ($mom)
+        return mom:transform ($config, $kid)
+    let $_after := xdmp:apply (map:get ($config, 'after'), $config, $mom)
+    return $mom
+};
+
+
